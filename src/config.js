@@ -63,6 +63,17 @@ function requiredEnv(name) {
   return value;
 }
 
+function parseSymbolList(value) {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter(Boolean);
+}
+
 function parseTickerIdMap(value) {
   const mapping = {};
   if (!value) {
@@ -84,28 +95,33 @@ function parseTickerIdMap(value) {
 
 loadDotEnv();
 
-const appKey = requiredEnv("WEBULL_APP_KEY");
-const appSecret = requiredEnv("WEBULL_APP_SECRET");
+const botMode = (process.env.BOT_MODE || "signal_only").trim().toLowerCase();
+if (!["signal_only", "webull"].includes(botMode)) {
+  throw new Error('BOT_MODE must be either "signal_only" or "webull".');
+}
 
-const symbols = (process.env.SYMBOLS || "SPY")
-  .split(",")
-  .map((symbol) => symbol.trim().toUpperCase())
-  .filter(Boolean);
-
+const symbols = parseSymbolList(process.env.SYMBOLS || "SPY");
 if (symbols.length === 0) {
   throw new Error("SYMBOLS must include at least one ticker.");
 }
 
+const signalStartInPositionSymbols = parseSymbolList(process.env.SIGNAL_START_IN_POSITION || "")
+  .filter((symbol) => symbols.includes(symbol));
+
 const dryRun = asBoolean(process.env.DRY_RUN, true);
 const enableLiveTrading = asBoolean(process.env.ENABLE_LIVE_TRADING, false);
 
-if (!dryRun && !enableLiveTrading) {
+if (botMode === "webull" && !dryRun && !enableLiveTrading) {
   throw new Error(
     "Safety check failed: DRY_RUN is false but ENABLE_LIVE_TRADING is not true."
   );
 }
 
+const appKey = botMode === "webull" ? requiredEnv("WEBULL_APP_KEY") : "";
+const appSecret = botMode === "webull" ? requiredEnv("WEBULL_APP_SECRET") : "";
+
 export const config = {
+  botMode,
   webull: {
     appKey,
     appSecret,
@@ -117,6 +133,13 @@ export const config = {
     tokenExpireSeconds: Math.max(300, Math.floor(asNumber(process.env.WEBULL_TOKEN_EXPIRE_SECONDS, 3600))),
     tickerIdBySymbol: parseTickerIdMap(process.env.WEBULL_TICKER_IDS || "")
   },
+  marketData: {
+    source: (process.env.MARKET_DATA_SOURCE || "yahoo").trim().toLowerCase(),
+    yahoo: {
+      interval: process.env.YAHOO_INTERVAL || "1m",
+      range: process.env.YAHOO_RANGE || "1d"
+    }
+  },
   strategy: {
     symbols,
     pollIntervalMs: asNumber(process.env.POLL_INTERVAL_MS, 60_000),
@@ -126,6 +149,7 @@ export const config = {
     stopTradingEquityFloor: asOptionalNumber(process.env.STOP_TRADING_EQUITY_FLOOR),
     stopTradingDailyLossPct: asOptionalNumber(process.env.STOP_TRADING_DAILY_LOSS_PCT),
     stopTradingDailyProfitPct: asOptionalNumber(process.env.STOP_TRADING_DAILY_PROFIT_PCT),
+    signalStartInPositionSymbols,
     heartbeatEveryCycles: Math.max(1, Math.floor(asNumber(process.env.HEARTBEAT_EVERY_CYCLES, 15))),
     dryRun
   },
@@ -141,4 +165,5 @@ export const config = {
   }
 };
 
-export const tradingModeLabel = dryRun ? "DRY_RUN" : "LIVE";
+export const tradingModeLabel =
+  botMode === "signal_only" ? "SIGNAL_ONLY" : dryRun ? "DRY_RUN" : "LIVE";
