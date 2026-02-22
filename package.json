@@ -1,0 +1,14 @@
+{
+  "name": "uncle-john-trading-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated day-trading bot with Webull and Telegram/iMessage alerts",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "bot": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/config.js && node --check src/broker/webull.js && node --check src/strategy/emaCrossover.js && node --check src/notify/index.js && node --check src/notify/telegram.js && node --check src/notify/imessage.js"
+  }
+}
