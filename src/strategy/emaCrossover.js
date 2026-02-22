@@ -48,6 +48,20 @@ function computeBuyQty({ equity, maxPositionPct, price }) {
   return Math.max(0, Math.floor(maxNotional / price));
 }
 
+function nyDayKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+
+  const year = parts.find((part) => part.type === "year")?.value || "0000";
+  const month = parts.find((part) => part.type === "month")?.value || "00";
+  const day = parts.find((part) => part.type === "day")?.value || "00";
+  return `${year}-${month}-${day}`;
+}
+
 export class EmaCrossoverTrader {
   constructor({ broker, notifier, logger, settings }) {
     this.broker = broker;
@@ -55,9 +69,49 @@ export class EmaCrossoverTrader {
     this.logger = logger;
     this.settings = settings;
     this.lastProcessedBarBySymbol = new Map();
+    this.tradingHalted = false;
+    this.tradingHaltReason = "";
+    this.dailyAnchorDay = "";
+    this.dailyAnchorEquity = null;
+  }
+
+  #getKillSwitchReason({ equity }) {
+    if (
+      Number.isFinite(this.settings.stopTradingEquityFloor) &&
+      equity <= this.settings.stopTradingEquityFloor
+    ) {
+      return `equity ${equity.toFixed(2)} hit floor ${this.settings.stopTradingEquityFloor.toFixed(2)}`;
+    }
+
+    if (Number.isFinite(this.dailyAnchorEquity) && this.dailyAnchorEquity > 0) {
+      const dailyReturnPct = ((equity - this.dailyAnchorEquity) / this.dailyAnchorEquity) * 100;
+
+      if (
+        Number.isFinite(this.settings.stopTradingDailyLossPct) &&
+        dailyReturnPct <= -Math.abs(this.settings.stopTradingDailyLossPct)
+      ) {
+        return `daily loss ${dailyReturnPct.toFixed(2)}% reached limit -${Math.abs(this.settings.stopTradingDailyLossPct).toFixed(2)}%`;
+      }
+
+      if (
+        Number.isFinite(this.settings.stopTradingDailyProfitPct) &&
+        dailyReturnPct >= Math.abs(this.settings.stopTradingDailyProfitPct)
+      ) {
+        return `daily profit ${dailyReturnPct.toFixed(2)}% reached target ${Math.abs(this.settings.stopTradingDailyProfitPct).toFixed(2)}%`;
+      }
+    }
+
+    return null;
   }
 
   async runCycle() {
+    if (this.tradingHalted) {
+      return {
+        status: "halted",
+        reason: this.tradingHaltReason
+      };
+    }
+
     const clock = await this.broker.getClock();
     if (!clock.is_open) {
       this.logger.info("Market is closed; skipping cycle.");
@@ -66,6 +120,27 @@ export class EmaCrossoverTrader {
 
     const account = await this.broker.getAccount();
     const equity = Number(account.equity);
+    const tradingDay = nyDayKey();
+    if (this.dailyAnchorDay !== tradingDay || !Number.isFinite(this.dailyAnchorEquity)) {
+      this.dailyAnchorDay = tradingDay;
+      this.dailyAnchorEquity = equity;
+      this.logger.info(
+        `Daily equity anchor set: ${this.dailyAnchorEquity.toFixed(2)} on ${this.dailyAnchorDay} (ET)`
+      );
+    }
+
+    const killSwitchReason = this.#getKillSwitchReason({ equity });
+    if (killSwitchReason) {
+      this.tradingHalted = true;
+      this.tradingHaltReason = killSwitchReason;
+      const message = `Trading halted by risk rule: ${killSwitchReason}`;
+      this.logger.error(message);
+      await this.notifier.send(message);
+      return {
+        status: "halted",
+        reason: killSwitchReason
+      };
+    }
 
     const actions = [];
 

@@ -56,6 +56,18 @@ If either setting is missing/misaligned, startup fails intentionally.
 - Position size: `floor((equity * MAX_POSITION_PCT) / price)`.
 - Runs once every `POLL_INTERVAL_MS`.
 
+## Auto Stop Trading (Risk Kill-Switch)
+
+Set any of these optional values in `.env`:
+- `STOP_TRADING_EQUITY_FLOOR`: hard equity floor (absolute dollar value).
+- `STOP_TRADING_DAILY_LOSS_PCT`: max daily loss percent from the day's first cycle equity.
+- `STOP_TRADING_DAILY_PROFIT_PCT`: daily profit target percent from the day's first cycle equity.
+
+If any threshold is hit, the bot:
+- sends a halt alert (Telegram/iMessage if configured),
+- stops placing orders,
+- exits the runtime loop.
+
 ## Notes About Market Hours
 
 - The bot guards trading to regular US market hours (Mon-Fri, 9:30 AM to 4:00 PM ET).

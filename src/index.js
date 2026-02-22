@@ -36,6 +36,11 @@ async function main() {
     try {
       const cycleResult = await trader.runCycle();
 
+      if (cycleResult.status === "halted") {
+        logger.error(`Stopping bot after risk halt: ${cycleResult.reason}`);
+        break;
+      }
+
       if (cycleResult.status === "completed") {
         if (cycleResult.actions.length === 0) {
           logger.info("Cycle complete: no trades.");
@@ -57,6 +62,8 @@ async function main() {
 
     await sleep(config.strategy.pollIntervalMs);
   }
+
+  logger.warn("Bot loop exited.");
 }
 
 process.on("SIGINT", () => {

@@ -47,6 +47,14 @@ function asNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asOptionalNumber(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function requiredEnv(name) {
   const value = process.env[name];
   if (!value) {
@@ -115,6 +123,9 @@ export const config = {
     fastEma: asNumber(process.env.FAST_EMA, 9),
     slowEma: asNumber(process.env.SLOW_EMA, 21),
     maxPositionPct: asNumber(process.env.MAX_POSITION_PCT, 0.2),
+    stopTradingEquityFloor: asOptionalNumber(process.env.STOP_TRADING_EQUITY_FLOOR),
+    stopTradingDailyLossPct: asOptionalNumber(process.env.STOP_TRADING_DAILY_LOSS_PCT),
+    stopTradingDailyProfitPct: asOptionalNumber(process.env.STOP_TRADING_DAILY_PROFIT_PCT),
     heartbeatEveryCycles: Math.max(1, Math.floor(asNumber(process.env.HEARTBEAT_EVERY_CYCLES, 15))),
     dryRun
   },
